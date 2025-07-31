@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Particle vs String Motion in Spacetime</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #0a0a0a, #1a1a2e);
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+        
+        .container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        .controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .control-group {
+            margin-bottom: 15px;
+        }
+        
+        .control-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: #ccc;
+        }
+        
+        button {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+            margin-bottom: 8px;
+            transition: all 0.3s ease;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        button.active {
+            background: linear-gradient(45deg, #f093fb, #f5576c);
+        }
+        
+        .info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            max-width: 400px;
+        }
+        
+        .legend {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .color-box {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+        
+        h3 {
+            margin: 0 0 15px 0;
+            color: #fff;
+            font-size: 16px;
+        }
+        
+        .axes-label {
+            position: absolute;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="controls">
+            <h3>Visualization Controls</h3>
+            <div class="control-group">
+                <button id="particleBtn" class="active">Show Particle Worldline</button>
+                <button id="stringBtn">Show String Worldsheet</button>
+                <button id="bothBtn">Show Both</button>
+            </div>
+            <div class="control-group">
+                <button id="animateBtn">Toggle Animation</button>
+                <button id="resetBtn">Reset View</button>
+            </div>
+        </div>
+        
+        <div class="legend">
+            <h3>Legend</h3>
+            <div class="legend-item">
+                <div class="color-box" style="background: #ff6b6b;"></div>
+                <span>Particle (Point)</span>
+            </div>
+            <div class="legend-item">
+                <div class="color-box" style="background: #4ecdc4;"></div>
+                <span>Worldline (1D)</span>
+            </div>
+            <div class="legend-item">
+                <div class="color-box" style="background: #45b7d1;"></div>
+                <span>String</span>
+            </div>
+            <div class="legend-item">
+                <div class="color-box" style="background: rgba(255, 255, 0, 0.3);"></div>
+                <span>Worldsheet (2D)</span>
+            </div>
+        </div>
+        
+        <div class="info">
+            <h3 id="infoTitle">Particle Motion</h3>
+            <p id="infoText">A particle is a point in space with no size. As it moves through spacetime, it traces a 1D worldline. The particle follows the path that minimizes action (proper time).</p>
+        </div>
+        
+        <div id="canvas-container"></div>
+    </div>
+
+    <script>
+        let scene, camera, renderer, controls;
+        let particleGroup, stringGroup, worldlineGroup, worldsheetGroup;
+        let animationId;
+        let isAnimating = false;
+        let time = 0;
+        let currentMode = 'particle';
+        
+        // Initialize the scene
+        function init() {
+            // Scene setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x050510);
+            
+            // Camera setup
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(8, 6, 8);
+            camera.lookAt(0, 0, 0);
+            
+            // Renderer setup
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+            
+            // Add ambient light
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+            scene.add(ambientLight);
+            
+            // Add directional light
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(10, 10, 5);
+            directionalLight.castShadow = true;
+            scene.add(directionalLight);
+            
+            // Create coordinate axes
+            createAxes();
+            
+            // Create groups
+            particleGroup = new THREE.Group();
+            stringGroup = new THREE.Group();
+            worldlineGroup = new THREE.Group();
+            worldsheetGroup = new THREE.Group();
+            
+            scene.add(particleGroup);
+            scene.add(stringGroup);
+            scene.add(worldlineGroup);
+            scene.add(worldsheetGroup);
+            
+            // Create initial objects
+            createParticleAndWorldline();
+            createStringAndWorldsheet();
+            
+            // Set initial visibility
+            updateVisibility();
+            
+            // Add mouse controls
+            addMouseControls();
+            
+            // Add event listeners
+            addEventListeners();
+            
+            // Start animation
+            animate();
+        }
+        
+        function createAxes() {
+            const axesGroup = new THREE.Group();
+            
+            // X axis (space) - red
+            const xGeometry = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(-6, 0, 0),
+                new THREE.Vector3(6, 0, 0)
+            ]);
+            const xMaterial = new THREE.LineBasicMaterial({ color: 0xff4444, opacity: 0.6, transparent: true });
+            const xLine = new THREE.Line(xGeometry, xMaterial);
+            axesGroup.add(xLine);
+            
+            // Y axis (time) - green
+            const yGeometry = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(0, -6, 0),
+                new THREE.Vector3(0, 6, 0)
+            ]);
+            const yMaterial = new THREE.LineBasicMaterial({ color: 0x44ff44, opacity: 0.6, transparent: true });
+            const yLine = new THREE.Line(yGeometry, yMaterial);
+            axesGroup.add(yLine);
+            
+            // Z axis (another space dimension) - blue
+            const zGeometry = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(0, 0, -6),
+                new THREE.Vector3(0, 0, 6)
+            ]);
+            const zMaterial = new THREE.LineBasicMaterial({ color: 0x4444ff, opacity: 0.6, transparent: true });
+            const zLine = new THREE.Line(zGeometry, zMaterial);
+            axesGroup.add(zLine);
+            
+            scene.add(axesGroup);
+        }
+        
+        function createParticleAndWorldline() {
+            // Clear existing objects
+            particleGroup.clear();
+            worldlineGroup.clear();
+            
+            // Create particle (point)
+            const particleGeometry = new THREE.SphereGeometry(0.1, 16, 16);
+            const particleMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0xff6b6b,
+                emissive: 0x441111
+            });
+            const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+            
+            // Position particle along its path (bounded oscillating motion)
+            const t = time * 0.02;
+            particle.position.set(
+                Math.sin(t) * 2, 
+                Math.sin(t * 0.7) * 3, 
+                Math.cos(t * 0.5) * 1.5
+            );
+            particleGroup.add(particle);
+            
+            // Create worldline (the path traced by the particle)
+            const worldlinePoints = [];
+            const timeRange = 200; // Show worldline history
+            for (let i = 0; i <= timeRange; i++) {
+                const pastTime = (time - timeRange + i) * 0.02;
+                worldlinePoints.push(new THREE.Vector3(
+                    Math.sin(pastTime) * 2,
+                    Math.sin(pastTime * 0.7) * 3,
+                    Math.cos(pastTime * 0.5) * 1.5
+                ));
+            }
+            
+            const worldlineGeometry = new THREE.BufferGeometry().setFromPoints(worldlinePoints);
+            const worldlineMaterial = new THREE.LineBasicMaterial({ 
+                color: 0x4ecdc4, 
+                linewidth: 3,
+                opacity: 0.8,
+                transparent: true
+            });
+            const worldline = new THREE.Line(worldlineGeometry, worldlineMaterial);
+            worldlineGroup.add(worldline);
+        }
+        
+        // Function to get string position at any time
+        function getStringPositions(timeValue) {
+            const stringPoints = [];
+            // Use sine/cosine to keep motion bounded and smooth
+            const t = timeValue * 0.02; // Slower, more controlled motion
+            const centerX = Math.sin(t) * 2; // Bounded between -2 and 2
+            const centerY = Math.sin(t * 0.7) * 3; // Different frequency for Y
+            const centerZ = Math.cos(t * 0.5) * 1.5; // Different frequency for Z
+            
+            const segments = 20;
+            for (let i = 0; i <= segments; i++) {
+                const s = (i / segments) * 2 * Math.PI;
+                const radius = 0.8 + 0.3 * Math.sin(timeValue * 0.05 + s * 2);
+                const x = centerX + Math.cos(s + timeValue * 0.02) * radius;
+                const y = centerY + Math.sin(s * 3 + timeValue * 0.03) * 0.3;
+                const z = centerZ + Math.sin(s + timeValue * 0.02) * radius;
+                stringPoints.push(new THREE.Vector3(x, y, z));
+            }
+            return stringPoints;
+        }
+        
+        function createStringAndWorldsheet() {
+            // Clear existing objects
+            stringGroup.clear();
+            worldsheetGroup.clear();
+            
+            // Create current string position
+            const currentStringPoints = getStringPositions(time);
+            const stringGeometry = new THREE.BufferGeometry().setFromPoints(currentStringPoints);
+            const stringMaterial = new THREE.LineBasicMaterial({ 
+                color: 0x45b7d1, 
+                linewidth: 4,
+                opacity: 0.9,
+                transparent: true
+            });
+            const string = new THREE.Line(stringGeometry, stringMaterial);
+            stringGroup.add(string);
+            
+            // Create worldsheet from string's historical positions
+            const worldsheetGeometry = new THREE.ParametricGeometry((u, v, target) => {
+                const timeRange = 200; // Time window for the worldsheet
+                const timeParam = time - timeRange + u * timeRange; // Smooth time progression
+                const stringIndex = Math.floor(v * 20); // Which point on the string
+                const stringFraction = v * 20 - stringIndex;
+                
+                const stringPoints = getStringPositions(timeParam);
+                
+                // Interpolate between adjacent points on the string
+                if (stringIndex < stringPoints.length - 1) {
+                    const p1 = stringPoints[stringIndex];
+                    const p2 = stringPoints[stringIndex + 1];
+                    target.lerpVectors(p1, p2, stringFraction);
+                } else {
+                    target.copy(stringPoints[stringPoints.length - 1]);
+                }
+            }, 60, 40);
+            
+            const worldsheetMaterial = new THREE.MeshLambertMaterial({
+                color: 0xffff00,
+                opacity: 0.3,
+                transparent: true,
+                side: THREE.DoubleSide,
+                wireframe: false
+            });
+            
+            const worldsheet = new THREE.Mesh(worldsheetGeometry, worldsheetMaterial);
+            worldsheetGroup.add(worldsheet);
+            
+            // Add wireframe version for better visibility
+            const worldsheetWireframe = new THREE.Mesh(worldsheetGeometry, new THREE.MeshBasicMaterial({
+                color: 0xffaa00,
+                wireframe: true,
+                opacity: 0.4,
+                transparent: true
+            }));
+            worldsheetGroup.add(worldsheetWireframe);
+        }
+        
+        function updateVisibility() {
+            particleGroup.visible = currentMode === 'particle' || currentMode === 'both';
+            worldlineGroup.visible = currentMode === 'particle' || currentMode === 'both';
+            stringGroup.visible = currentMode === 'string' || currentMode === 'both';
+            worldsheetGroup.visible = currentMode === 'string' || currentMode === 'both';
+            
+            // Update info panel
+            const infoTitle = document.getElementById('infoTitle');
+            const infoText = document.getElementById('infoText');
+            
+            if (currentMode === 'particle') {
+                infoTitle.textContent = 'Particle Motion';
+                infoText.textContent = 'A particle is a point in space with no size. As it moves through spacetime, it traces a 1D worldline. The particle follows the path that minimizes action (proper time).';
+            } else if (currentMode === 'string') {
+                infoTitle.textContent = 'String Motion';
+                infoText.textContent = 'A string has length and can vibrate. As it moves through spacetime, every point on the string traces its own worldline, forming a 2D worldsheet. The string minimizes the area of this surface.';
+            } else {
+                infoTitle.textContent = 'Particle vs String';
+                infoText.textContent = 'Compare how a point-like particle traces a 1D worldline versus how an extended string traces a 2D worldsheet through spacetime.';
+            }
+        }
+        
+        function addMouseControls() {
+            let mouseDown = false;
+            let mouseX = 0;
+            let mouseY = 0;
+            let cameraDistance = 12;
+            let cameraAngleX = 0;
+            let cameraAngleY = 0;
+            
+            renderer.domElement.addEventListener('mousedown', (event) => {
+                mouseDown = true;
+                mouseX = event.clientX;
+                mouseY = event.clientY;
+            });
+            
+            renderer.domElement.addEventListener('mouseup', () => {
+                mouseDown = false;
+            });
+            
+            renderer.domElement.addEventListener('mousemove', (event) => {
+                if (!mouseDown) return;
+                
+                const deltaX = event.clientX - mouseX;
+                const deltaY = event.clientY - mouseY;
+                
+                cameraAngleX += deltaX * 0.01;
+                cameraAngleY += deltaY * 0.01;
+                cameraAngleY = Math.max(-Math.PI/2, Math.min(Math.PI/2, cameraAngleY));
+                
+                camera.position.x = Math.cos(cameraAngleX) * Math.cos(cameraAngleY) * cameraDistance;
+                camera.position.y = Math.sin(cameraAngleY) * cameraDistance;
+                camera.position.z = Math.sin(cameraAngleX) * Math.cos(cameraAngleY) * cameraDistance;
+                camera.lookAt(0, 0, 0);
+                
+                mouseX = event.clientX;
+                mouseY = event.clientY;
+            });
+            
+            renderer.domElement.addEventListener('wheel', (event) => {
+                cameraDistance += event.deltaY * 0.01;
+                cameraDistance = Math.max(5, Math.min(25, cameraDistance));
+                
+                camera.position.x = Math.cos(cameraAngleX) * Math.cos(cameraAngleY) * cameraDistance;
+                camera.position.y = Math.sin(cameraAngleY) * cameraDistance;
+                camera.position.z = Math.sin(cameraAngleX) * Math.cos(cameraAngleY) * cameraDistance;
+            });
+        }
+        
+        function addEventListeners() {
+            document.getElementById('particleBtn').addEventListener('click', () => {
+                currentMode = 'particle';
+                updateButtonStates();
+                updateVisibility();
+            });
+            
+            document.getElementById('stringBtn').addEventListener('click', () => {
+                currentMode = 'string';
+                updateButtonStates();
+                updateVisibility();
+            });
+            
+            document.getElementById('bothBtn').addEventListener('click', () => {
+                currentMode = 'both';
+                updateButtonStates();
+                updateVisibility();
+            });
+            
+            document.getElementById('animateBtn').addEventListener('click', () => {
+                isAnimating = !isAnimating;
+                document.getElementById('animateBtn').textContent = isAnimating ? 'Pause Animation' : 'Start Animation';
+            });
+            
+            document.getElementById('resetBtn').addEventListener('click', () => {
+                camera.position.set(8, 6, 8);
+                camera.lookAt(0, 0, 0);
+                time = 0;
+            });
+        }
+        
+        function updateButtonStates() {
+            document.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
+            if (currentMode === 'particle') {
+                document.getElementById('particleBtn').classList.add('active');
+            } else if (currentMode === 'string') {
+                document.getElementById('stringBtn').classList.add('active');
+            } else {
+                document.getElementById('bothBtn').classList.add('active');
+            }
+        }
+        
+        function animate() {
+            animationId = requestAnimationFrame(animate);
+            
+            if (isAnimating) {
+                time += 1;
+                createParticleAndWorldline();
+                createStringAndWorldsheet();
+            }
+            
+            renderer.render(scene, camera);
+        }
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        // Initialize when page loads
+        init();
+        
+        // Start with animation enabled
+        isAnimating = true;
+        document.getElementById('animateBtn').textContent = 'Pause Animation';
+    </script>
+</body>
+</html>
