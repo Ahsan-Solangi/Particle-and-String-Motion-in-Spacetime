@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Particle vs String Motion in Spacetime</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #0a0a0a, #1a1a2e);
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+        
+        .container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        .controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .control-group {
+            margin-bottom: 15px;
+        }
+        
+        .control-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: #ccc;
+        }
+        
+        button {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+            margin-bottom: 8px;
+            transition: all 0.3s ease;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        button.active {
+            background: linear-gradient(45deg, #f093fb, #f5576c);
+        }
+        
+        .info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            max-width: 400px;
+        }
+        
+        .legend {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .color-box {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+        
+        h3 {
+            margin: 0 0 15px 0;
+            color: #fff;
+            font-size: 16px;
+        }
+        
+        .axes-label {
+            position: absolute;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="controls">
+            <h3>Visualization Controls</h3>
+            <div class="control-group">
+                <button id="particleBtn" class="active">Show Particle Worldline</button>
+                <button id="stringBtn">Show String Worldsheet</button>
+                <button id="bothBtn">Show Both</button>
+            </div>
+            <div class="control-group">
+                <button id="animateBtn">Toggle Animation</button>
+                <button id="resetBtn">Reset View</button>
+            </div>
+        </div>
+        
+        <div class="legend">
+            <h3>Legend</h3>
+            <div class="legend-item">
+                <div class="color-box" style="background: #ff6b6b;"></div>
+                <span>Free Particle</span>
+            </div>
+            <div class="legend-item">
+                <div class="color-box" style="background: #4ecdc4;"></div>
+                <span>Geodesic Worldline</span>
+            </div>
+            <div class="legend-item">
+                <div class="color-box" style="background: #45b7d1;"></div>
+                <span>Vibrating String</span>
+            </div>
+            <div class="legend-item">
+                <div class="color-box" style="background: rgba(255, 255, 0, 0.3);"></div>
+                <span>Nambu-Goto Worldsheet</span>
+            </div>
+        </div>
+        
+        <div class="info">
+            <h3 id="infoTitle">Particle Motion</h3>
+            <p id="infoText">A particle is a point in space with no size. As it moves through spacetime, it traces a 1D worldline. The particle follows the path that minimizes action (proper time).</p>
+        </div>
+        
+        <div id="canvas-container"></div>
+    </div>
+
+    <script>
+        let scene, camera, renderer, controls;
+        let particleGroup, stringGroup, worldlineGroup, worldsheetGroup;
+        let animationId;
+        let isAnimating = false;
+        let time = 0;
+        let currentMode = 'particle';
+        
+        // Initialize the scene
+        function init() {
+            // Scene setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x050510);
+            
+            // Camera setup
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(8, 6, 8);
+            camera.lookAt(0, 0, 0);
+            
+            // Renderer setup
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+            
+            // Add ambient light
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+            scene.add(ambientLight);
+            
+            // Add directional light
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(10, 10, 5);
+            directionalLight.castShadow = true;
+            scene.add(directionalLight);
+            
+            // Create coordinate axes
+            createAxes();
+            
+            // Create groups
+            particleGroup = new THREE.Group();
+            stringGroup = new THREE.Group();
+            worldlineGroup = new THREE.Group();
+            worldsheetGroup = new THREE.Group();
+            
+            scene.add(particleGroup);
+            scene.add(stringGroup);
+            scene.add(worldlineGroup);
+            scene.add(worldsheetGroup);
+            
+            // Create initial objects
+            createParticleAndWorldline();
+            createStringAndWorldsheet();
+            
+            // Set initial visibility
+            updateVisibility();
+            
+            // Add mouse controls
+            addMouseControls();
+            
+            // Add event listeners
+            addEventListeners();
+            
+            // Start animation
+            animate();
+        }
+        
+        function createAxes() {
+            const axesGroup = new THREE.Group();
+            
+            // X axis (space) - red
+            const xGeometry = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(-6, 0, 0),
+                new THREE.Vector3(6, 0, 0)
+            ]);
+            const xMaterial = new THREE.LineBasicMaterial({ color: 0xff4444, opacity: 0.6, transparent: true });
+            const xLine = new THREE.Line(xGeometry, xMaterial);
+            axesGroup.add(xLine);
+            
+            // Y axis (time) - green
+            const yGeometry = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(0, -6, 0),
+                new THREE.Vector3(0, 6, 0)
+            ]);
+            const yMaterial = new THREE.LineBasicMaterial({ color: 0x44ff44, opacity: 0.6, transparent: true });
+            const yLine = new THREE.Line(yGeometry, yMaterial);
+            axesGroup.add(yLine);
+            
+            // Z axis (another space dimension) - blue
+            const zGeometry = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(0, 0, -6),
+                new THREE.Vector3(0, 0, 6)
+            ]);
+            const zMaterial = new THREE.LineBasicMaterial({ color: 0x4444ff, opacity: 0.6, transparent: true });
+            const zLine = new THREE.Line(zGeometry, zMaterial);
+            axesGroup.add(zLine);
+            
+            scene.add(axesGroup);
+        }
+        
+        function createParticleAndWorldline() {
+            // Clear existing objects
+            particleGroup.clear();
+            worldlineGroup.clear();
+            
+            // Create particle (point)
+            const particleGeometry = new THREE.SphereGeometry(0.1, 16, 16);
+            const particleMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0xff6b6b,
+                emissive: 0x441111
+            });
+            const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+            
+            // Position particle along geodesic trajectory (scaled for viewing)
+            const currentTime = time * 0.1; // Slower proper time parameter
+            const pos = getParticlePosition(currentTime);
+            particle.position.set(pos.x, pos.t, pos.z);
+            particleGroup.add(particle);
+            
+            // Create worldline from geodesic motion
+            const worldlinePoints = [];
+            const timeRange = 150;
+            for (let i = 0; i <= timeRange; i++) {
+                const properTime = (time - timeRange + i) * 0.1;
+                const pos = getParticlePosition(properTime);
+                worldlinePoints.push(new THREE.Vector3(pos.x, pos.t, pos.z));
+            }
+            
+            const worldlineGeometry = new THREE.BufferGeometry().setFromPoints(worldlinePoints);
+            const worldlineMaterial = new THREE.LineBasicMaterial({ 
+                color: 0x4ecdc4, 
+                linewidth: 3,
+                opacity: 0.8,
+                transparent: true
+            });
+            const worldline = new THREE.Line(worldlineGeometry, worldlineMaterial);
+            worldlineGroup.add(worldline);
+        }
+        
+        // Physical constants and parameters (scaled for visualization)
+        const c = 1; // Speed of light (normalized)
+        const m = 0.1; // Particle mass
+        const stringTension = 1.0; // String tension
+        
+        // Function to get realistic particle position (geodesic motion)
+        function getParticlePosition(properTime) {
+            // Simple geodesic in flat spacetime with initial velocity (scaled for viewing)
+            const v0x = 0.05; // Reduced initial velocity in x
+            const v0z = 0.03; // Reduced initial velocity in z
+            const gamma = 1 / Math.sqrt(1 - (v0x*v0x + v0z*v0z)/(c*c)); // Lorentz factor
+            
+            return {
+                x: v0x * properTime / gamma,
+                t: properTime * 0.2, // Scale time dimension for better viewing
+                z: v0z * properTime / gamma
+            };
+        }
+        
+        // Function to get realistic string position (Nambu-Goto dynamics)
+        function getStringPositions(timeValue) {
+            const stringPoints = [];
+            const segments = 20;
+            const L = 2; // Reduced string length for better visibility
+            
+            // Standing wave solution for vibrating string (scaled frequencies)
+            const omega1 = 0.5; // Reduced fundamental frequency
+            const omega2 = 1.0; // Reduced second harmonic
+            
+            for (let i = 0; i <= segments; i++) {
+                const sigma = (i / segments) * L - L/2; // String parameter from -L/2 to L/2
+                
+                // Transverse oscillations (realistic string vibration but scaled)
+                const A1 = 0.3; // Reduced amplitude of fundamental mode
+                const A2 = 0.15; // Reduced amplitude of second harmonic
+                
+                const x = sigma + A1 * Math.sin(Math.PI * sigma / L) * Math.cos(omega1 * timeValue * 0.02);
+                const y = A2 * Math.sin(2 * Math.PI * sigma / L) * Math.cos(omega2 * timeValue * 0.02);
+                const z = A1 * 0.2 * Math.sin(3 * Math.PI * sigma / L) * Math.cos(omega1 * timeValue * 0.025);
+                
+                // Add small longitudinal motion (realistic for relativistic strings)
+                const longitudinal = 0.05 * Math.cos(Math.PI * sigma / L) * Math.sin(omega1 * timeValue * 0.015);
+                
+                stringPoints.push(new THREE.Vector3(
+                    x + longitudinal,
+                    y,
+                    z
+                ));
+            }
+            return stringPoints;
+        }
+        
+        function createStringAndWorldsheet() {
+            // Clear existing objects
+            stringGroup.clear();
+            worldsheetGroup.clear();
+            
+            // Create current string position
+            const currentStringPoints = getStringPositions(time);
+            const stringGeometry = new THREE.BufferGeometry().setFromPoints(currentStringPoints);
+            const stringMaterial = new THREE.LineBasicMaterial({ 
+                color: 0x45b7d1, 
+                linewidth: 4,
+                opacity: 0.9,
+                transparent: true
+            });
+            const string = new THREE.Line(stringGeometry, stringMaterial);
+            stringGroup.add(string);
+            
+            // Create worldsheet from string's historical positions
+            const worldsheetGeometry = new THREE.ParametricGeometry((u, v, target) => {
+                const timeRange = 200; // Time window for the worldsheet
+                const timeParam = time - timeRange + u * timeRange; // Smooth time progression
+                const stringIndex = Math.floor(v * 20); // Which point on the string
+                const stringFraction = v * 20 - stringIndex;
+                
+                const stringPoints = getStringPositions(timeParam);
+                
+                // Interpolate between adjacent points on the string
+                if (stringIndex < stringPoints.length - 1) {
+                    const p1 = stringPoints[stringIndex];
+                    const p2 = stringPoints[stringIndex + 1];
+                    target.lerpVectors(p1, p2, stringFraction);
+                } else {
+                    target.copy(stringPoints[stringPoints.length - 1]);
+                }
+            }, 60, 40);
+            
+            const worldsheetMaterial = new THREE.MeshLambertMaterial({
+                color: 0xffff00,
+                opacity: 0.3,
+                transparent: true,
+                side: THREE.DoubleSide,
+                wireframe: false
+            });
+            
+            const worldsheet = new THREE.Mesh(worldsheetGeometry, worldsheetMaterial);
+            worldsheetGroup.add(worldsheet);
+            
+            // Add wireframe version for better visibility
+            const worldsheetWireframe = new THREE.Mesh(worldsheetGeometry, new THREE.MeshBasicMaterial({
+                color: 0xffaa00,
+                wireframe: true,
+                opacity: 0.4,
+                transparent: true
+            }));
+            worldsheetGroup.add(worldsheetWireframe);
+        }
+        
+        function updateVisibility() {
+            particleGroup.visible = currentMode === 'particle' || currentMode === 'both';
+            worldlineGroup.visible = currentMode === 'particle' || currentMode === 'both';
+            stringGroup.visible = currentMode === 'string' || currentMode === 'both';
+            worldsheetGroup.visible = currentMode === 'string' || currentMode === 'both';
+            
+            // Update info panel
+            const infoTitle = document.getElementById('infoTitle');
+            const infoText = document.getElementById('infoText');
+            
+            if (currentMode === 'particle') {
+                infoTitle.textContent = 'Free Particle Geodesic';
+                infoText.textContent = 'A free particle follows a geodesic (straight line) through flat spacetime. The worldline represents the path of least proper time, demonstrating relativistic motion with constant velocity.';
+            } else if (currentMode === 'string') {
+                infoTitle.textContent = 'Nambu-Goto String Dynamics';
+                infoText.textContent = 'A relativistic string vibrates in standing wave modes. The worldsheet is generated by the Nambu-Goto action, which minimizes the surface area swept out by the string in spacetime.';
+            } else {
+                infoTitle.textContent = 'Geodesics vs String Dynamics';
+                infoText.textContent = 'Compare geodesic motion (minimal worldline) with string vibration dynamics (minimal worldsheet area). Both follow from action principles in relativity.';
+            }
+        }
+        
+        function addMouseControls() {
+            let mouseDown = false;
+            let mouseX = 0;
+            let mouseY = 0;
+            let cameraDistance = 12;
+            let cameraAngleX = 0;
+            let cameraAngleY = 0;
+            
+            renderer.domElement.addEventListener('mousedown', (event) => {
+                mouseDown = true;
+                mouseX = event.clientX;
+                mouseY = event.clientY;
+            });
+            
+            renderer.domElement.addEventListener('mouseup', () => {
+                mouseDown = false;
+            });
+            
+            renderer.domElement.addEventListener('mousemove', (event) => {
+                if (!mouseDown) return;
+                
+                const deltaX = event.clientX - mouseX;
+                const deltaY = event.clientY - mouseY;
+                
+                cameraAngleX += deltaX * 0.01;
+                cameraAngleY += deltaY * 0.01;
+                cameraAngleY = Math.max(-Math.PI/2, Math.min(Math.PI/2, cameraAngleY));
+                
+                camera.position.x = Math.cos(cameraAngleX) * Math.cos(cameraAngleY) * cameraDistance;
+                camera.position.y = Math.sin(cameraAngleY) * cameraDistance;
+                camera.position.z = Math.sin(cameraAngleX) * Math.cos(cameraAngleY) * cameraDistance;
+                camera.lookAt(0, 0, 0);
+                
+                mouseX = event.clientX;
+                mouseY = event.clientY;
+            });
+            
+            renderer.domElement.addEventListener('wheel', (event) => {
+                event.preventDefault(); // Prevent page scrolling
+                cameraDistance += event.deltaY * 0.005; // More precise zoom
+                cameraDistance = Math.max(3, Math.min(20, cameraDistance)); // Better zoom range
+                
+                camera.position.x = Math.cos(cameraAngleX) * Math.cos(cameraAngleY) * cameraDistance;
+                camera.position.y = Math.sin(cameraAngleY) * cameraDistance;
+                camera.position.z = Math.sin(cameraAngleX) * Math.cos(cameraAngleY) * cameraDistance;
+                camera.lookAt(0, 0, 0);
+            });
+        }
+        
+        function addEventListeners() {
+            document.getElementById('particleBtn').addEventListener('click', () => {
+                currentMode = 'particle';
+                updateButtonStates();
+                updateVisibility();
+            });
+            
+            document.getElementById('stringBtn').addEventListener('click', () => {
+                currentMode = 'string';
+                updateButtonStates();
+                updateVisibility();
+            });
+            
+            document.getElementById('bothBtn').addEventListener('click', () => {
+                currentMode = 'both';
+                updateButtonStates();
+                updateVisibility();
+            });
+            
+            document.getElementById('animateBtn').addEventListener('click', () => {
+                isAnimating = !isAnimating;
+                document.getElementById('animateBtn').textContent = isAnimating ? 'Pause Animation' : 'Start Animation';
+            });
+            
+            document.getElementById('resetBtn').addEventListener('click', () => {
+                camera.position.set(8, 6, 8);
+                camera.lookAt(0, 0, 0);
+                time = 0;
+                // Reset camera controls
+                cameraDistance = 12;
+                cameraAngleX = 0;
+                cameraAngleY = 0;
+            });
+        }
+        
+        function updateButtonStates() {
+            document.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
+            if (currentMode === 'particle') {
+                document.getElementById('particleBtn').classList.add('active');
+            } else if (currentMode === 'string') {
+                document.getElementById('stringBtn').classList.add('active');
+            } else {
+                document.getElementById('bothBtn').classList.add('active');
+            }
+        }
+        
+        function animate() {
+            animationId = requestAnimationFrame(animate);
+            
+            if (isAnimating) {
+                time += 1;
+                createParticleAndWorldline();
+                createStringAndWorldsheet();
+            }
+            
+            renderer.render(scene, camera);
+        }
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        // Initialize when page loads
+        init();
+        
+        // Start with animation enabled
+        isAnimating = true;
+        document.getElementById('animateBtn').textContent = 'Pause Animation';
+    </script>
+</body>
+</html>
